@@ -1,0 +1,6 @@
+api = "0.10"
+
+[buildpack]
+  id = "elixir-buildpack"
+  version = "0.1"
+  name = "Elixir Buildpack"

@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+echo "---> Elixir Buildpack"
+
+# TODO: make these settable.
+# 1. GET ARGS
+layersdir=$1
+otp_version=27.1.1
+elixir_version=1.17.2
+
+# 2. DOWNLOAD OTP
+echo "---> Downloading and extracting OTP"
+otplayer="$layersdir/otp"
+mkdir -p "$otplayer"
+otp_url="https://github.com/elixir-buildpack/heroku-otp/releases/download/$otp_version/heroku-22.tar.gz"
+wget -q -O - "$otp_url" | tar -xzf - -C "$otplayer"
+mv "$otplayer/OTP-$otp_version"/* "$otplayer"
+rm -r "$otplayer/OTP-$otp_version"
+"$otplayer"/Install -minimal "$otplayer" > /dev/null
+
+# 3. DOWNLOAD ELIXIR
+echo "---> Downloading and extracting Elixir"
+short_otp_version=$(echo "$otp_version" | awk 'match($0, /^[0-9][0-9]/) { print substr( $0, RSTART, RLENGTH )}')
+elixirlayer="$layersdir"/elixir
+mkdir -p "$elixirlayer"
+elixir_url="https://repo.hex.pm/builds/elixir/v$elixir_version-otp-$short_otp_version.zip"
+wget -q -O "$elixirlayer/elixir.zip" "$elixir_url"
+unzip -q "$elixirlayer/elixir.zip" -d "$elixirlayer"
+rm "$elixirlayer/elixir.zip"
+chmod +x "$elixirlayer/bin"/*
+
+mix_layer="$1/mix"
+mkdir -p "$mix_layer"
+mkdir -p "$mix_layer/.mix"
+mkdir -p "$mix_layer/.hex"
+
+echo "Setting MIX_ENV, MIX_HOME, HEX_HOME"
+mkdir -p "$mix_layer/env"
+cat > "$mix_layer/env/mix" <<-EOF
+PATH="$otplayer/bin":"$elixirlayer/bin":$PATH
+MIX_ENV=prod
+MIX_HOME=$mix_layer/.mix
+HEX_HOME=$mix_layer/.hex
+EOF
+set -o allexport
+source "$mix_layer/env/mix"
+set +o allexport
+
+echo "Setting LANG, LANGUAGE, LC_ALL"
+mkdir -p "$mix_layer/env"
+cat > "$mix_layer/env/locale" <<-EOF
+LANG=en_US.UTF-8
+LANGUAGE=en_US:en
+LC_ALL=en_US.UTF-8
+EOF
+set -o allexport
+source "$mix_layer/env/locale"
+set +o allexport
+locale
+
+
+
+
+# 4. MAKE ERLANG and ELIXIR AVAILABLE DURING LAUNCH
+cat << EOF > "${otplayer}.toml"
+[types]
+launch = true
+cache = false
+build = false
+EOF
+
+cat << EOF > "${elixirlayer}.toml"
+[types]
+launch = true
+cache = false
+build = false
+EOF
+
+# 5. MAKE ERLANG AND ELIXIR AVAILABLE TO THIS SCRIPT
+export PATH="$otplayer/bin":"$elixirlayer/bin":$PATH
+export LANG=C.UTF-8
+
+# 6. SETUP REBAR AND HEX
+echo "---> Installing Rebar"
+mix local.rebar --force > /dev/null
+echo "---> Installing Hex"
+mix local.hex --force > /dev/null
+
+export MIX_ENV=prod
+
+# 7. INSTALL AND COMPILE PACKAGES
+echo "---> Installing and compiling packages"
+mix deps.get --only prod
+mix deps.compile --only prod
+
+# 8. COMPILE PROJECT
+echo "---> Compiling project for $MIX_ENV"
+
+cd /workspace
+mix compile --force
+mix phx.gen.release
+mix release --force --overwrite
+
+MIX_ENV=prod mix app.tree > release_name
+release_name=$(cat release_name | head -n 1)
+
+
+cat > "${CNB_LAYERS_DIR}/launch.toml" << EOL
+# our web process
+[[processes]]
+type = "web"
+command = ["bash", "-c", "_build/prod/rel/$release_name/bin/server"]
+default = true
+EOL
+
+#command = ["bash", "-c", "mix phx.server"]
