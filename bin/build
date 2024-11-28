@@ -3,11 +3,10 @@ set -eo pipefail
 
 echo "---> Elixir Buildpack"
 
-# TODO: make these settable.
 # 1. GET ARGS
 layersdir=$1
-otp_version=27.1.1
-elixir_version=1.17.2
+otp_version=${ERLANG_VERSION:-27.1.2}
+elixir_version=${ELIXIR_VERSION:-1.17.3}
 
 # 2. DOWNLOAD OTP
 echo "---> Downloading and extracting OTP"
