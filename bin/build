@@ -9,7 +9,7 @@ otp_version=${ERLANG_VERSION:-27.1.2}
 elixir_version=${ELIXIR_VERSION:-1.17.3}
 
 # 2. DOWNLOAD OTP
-echo "---> Downloading and extracting OTP"
+echo "---> Downloading and extracting OTP $otp_version"
 otplayer="$layersdir/otp"
 mkdir -p "$otplayer"
 otp_url="https://github.com/elixir-buildpack/heroku-otp/releases/download/$otp_version/heroku-22.tar.gz"
@@ -19,7 +19,7 @@ rm -r "$otplayer/OTP-$otp_version"
 "$otplayer"/Install -minimal "$otplayer" > /dev/null
 
 # 3. DOWNLOAD ELIXIR
-echo "---> Downloading and extracting Elixir"
+echo "---> Downloading and extracting Elixir $elixir_version"
 short_otp_version=$(echo "$otp_version" | awk 'match($0, /^[0-9][0-9]/) { print substr( $0, RSTART, RLENGTH )}')
 elixirlayer="$layersdir"/elixir
 mkdir -p "$elixirlayer"
